@@ -1,0 +1,181 @@
+globals [
+  infected-count
+  healthy-count
+  recovered-count
+  total-infections
+  total-recoveries
+  average-recovery-time
+  recovery-times
+]
+
+turtles-own [state recovery-timer stage-timer]
+
+to setup
+  clear-all
+
+  ;; Set background color
+  ask patches [
+    set pcolor gray + 2
+  ]
+
+  ;; Initialize statistics
+  set infected-count 0
+  set healthy-count 0
+  set recovered-count 0
+  set total-infections 0
+  set total-recoveries 0
+  set average-recovery-time 0
+  set recovery-times []
+
+  ;; Create turtles
+  create-turtles population [
+    setxy random-xcor random-ycor
+    set state "healthy"
+    set color green  ;; Healthy turtles are green
+    set shape "person"  ;; Use person shape for better visualization
+  ]
+
+  ;; Infect initial turtles
+  ask n-of initial-infected turtles [
+    set state "infected"
+    set color red
+    set recovery-timer 30
+    set stage-timer 15
+  ]
+
+  update-counts
+  reset-ticks
+end
+
+to go
+  ;; Divide turtles into two groups
+  let group1 turtles with [who mod 2 = 0]  ;; Even-numbered turtles
+  let group2 turtles with [who mod 2 = 1]  ;; Odd-numbered turtles
+
+  ;; Process group1 tasks
+  ask group1 [
+    if state = "healthy" [ avoid-infected ]
+    if state = "infected" [ spread-disease ]
+  ]
+
+  ;; Process group2 tasks
+  ask group2 [
+    if state = "mild" [ progress-to-severe ]
+    if state = "severe" [ progress-to-outcome ]
+    move
+  ]
+
+  ;; Show infection radius if enabled
+  visualize-infection-radius
+
+  ;; Update counts and visuals
+  update-counts
+
+  ;; Slow down simulation
+  wait 0.2  ;; Adjust this value for speed
+
+  tick
+end
+
+
+to spread-disease
+  ;; Spread disease to healthy turtles nearby
+  ask turtles with [state = "infected"] [
+    let nearby-healthy turtles in-radius infection-radius with [state = "healthy"]
+    ask nearby-healthy [
+      if random-float 1 < infection-probability [
+        set state "mild"
+        set color yellow
+        set recovery-timer 30
+        set stage-timer 15
+      ]
+    ]
+  ]
+end
+
+to avoid-infected
+  ;; Healthy turtles avoid infected ones
+  let nearby-infected turtles in-radius infection-radius with [state = "infected"]
+  if any? nearby-infected [
+    let away-direction towards one-of nearby-infected
+    set heading away-direction + 180  ;; Move away from infected turtle
+    forward 1
+  ]
+end
+
+to progress-to-severe
+  ;; Change from mild to severe
+  set stage-timer stage-timer - 1
+  if stage-timer <= 0 [
+    set state "severe"
+    set color orange
+  ]
+end
+
+to progress-to-outcome
+  ;; Recover or die
+  set recovery-timer recovery-timer - 1
+  if recovery-timer <= 0 [
+    if random-float 1 < 0.2 [  ;; 20% chance of death
+      set state "dead"
+      set color gray
+      stop
+    ]
+    set state "recovered"
+    set color blue
+    set recovery-times lput (30 - recovery-timer) recovery-times
+  ]
+end
+
+to move
+  ;; Turtles move randomly
+  right random 90 - 45
+  forward 1.5
+end
+
+to visualize-infection-radius
+  ;; Highlight infection radius if enabled
+  if show-infection-radius [
+    ask patches [
+      if pcolor = red - 2 [ set pcolor gray + 2 ]  ;; Reset background color
+    ]
+
+    ask turtles with [state = "infected"] [
+      ask patches in-radius infection-radius [
+        set pcolor red - 2  ;; Highlight patches within infection radius
+      ]
+    ]
+  ]
+  ;; Clear highlights if disabled
+  if not show-infection-radius [
+    ask patches [
+      if pcolor = red - 2 [ set pcolor gray + 2 ]  ;; Reset background color
+    ]
+  ]
+end
+
+to update-counts
+  ;; Update counts for each state
+  set infected-count count turtles with [state = "mild" or state = "severe" or state = "infected"]
+  set healthy-count count turtles with [state = "healthy"]
+  set recovered-count count turtles with [state = "recovered"]
+
+  ;; Update recovery statistics
+  set total-recoveries count turtles with [state = "recovered"]
+  if not empty? recovery-times [
+    set average-recovery-time mean recovery-times
+  ]
+
+  ;; Update plots
+  set-current-plot "Healthy Population"
+  set-current-plot-pen "Healthy"
+  plot healthy-count
+
+  set-current-plot "Infected Population"
+  set-current-plot-pen "Infected"
+  plot infected-count
+
+  set-current-plot "Recovered Population"
+  set-current-plot-pen "Recovered"
+  plot recovered-count
+end
